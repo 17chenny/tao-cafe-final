@@ -14,9 +14,9 @@ st.set_page_config(page_title="桃憩時光 - 桃園智慧咖啡廳搜尋", page
 # --- 🌟 核心功能升級：自動化爬蟲文本特徵轉換引擎 (Feature Engineering) 🌟 ---
 def run_text_mining_and_update_csv():
     """
-    這個函式會讀取你們手打的 cafe.csv，保留原本的店名、地址與經緯度。
+    這個函式會讀取手打的 cafe.csv，保留原本的店名、地址與經緯度。
     接著模擬網路爬蟲抓取每家店在 Google Maps/FB/IG 上的評論文本，
-    最後自動做『二值化 (1/0) 轉換』並直接覆蓋回寫 CSV 檔案！
+    最後自動做『二值化 (1/0) 轉換』並直接以 utf-8-sig 編碼覆蓋回寫 CSV 檔案！
     """
     csv_filename = "cafe.csv"
     if not os.path.exists(csv_filename):
@@ -25,16 +25,15 @@ def run_text_mining_and_update_csv():
         
     st.info("🕸️ 正在啟動網路數據採集與特徵工程引擎...")
     
-    # 讀取你們原本的 CSV
-    df = pd.read_csv(csv_filename)
+    # 讀取 CSV，指定使用 utf-8-sig 完美解決中文字元打架與欄位遺失問題
+    df = pd.read_csv(csv_filename, encoding='utf-8-sig')
     
-    # 為了確保欄位乾淨且對齊你們的側邊欄，我們動態初始化或清空這些 1/0 欄位
+    # 為了確保欄位乾淨且對齊側邊欄，動態初始化這些 1/0 欄位
     target_tags = ["midnight", "pudding", "basque", "study", "chat", "photo"]
     for tag in target_tags:
         df[tag] = 0
         
-    # 模擬針對你們 CSV 內每家真實咖啡廳，爬蟲在 Google Maps / FB / IG 抓到的真實評論語料
-    # 這裡示範幾家主要店家的爬蟲文本，其餘店家給予隨機相關語料
+    # 模擬針對 CSV 內每家真實咖啡廳，爬蟲抓到的真實評論語料
     scraped_reviews = {
         "雷爾森咖啡": "這家的手工布丁超級好吃！環境安靜很適合讀書用電腦，大推！",
         "走走咖啡": "巴斯克蛋糕非常濃郁，店內裝潢很文青，適合拍照打卡，下午跟朋友來聊天很舒服。",
@@ -83,8 +82,9 @@ def run_text_mining_and_update_csv():
 # --- 效能優化與資料讀取 ---
 def load_data():
     try:
-        df = pd.read_csv("cafe.csv")
-        # 如果發現關鍵欄位都是空的，代表是純手打未活化的 CSV，自動觸發一次特徵處理
+        # 讀取 CSV 時同樣指定使用 utf-8-sig 編碼，確保欄位名稱 pudding 完美對齊
+        df = pd.read_csv("cafe.csv", encoding='utf-8-sig')
+        # 如果發現關鍵欄位不存在或都是空的，自動觸發一次特徵處理
         if "pudding" not in df.columns or df["pudding"].isnull().all() or (df["pudding"] == 0).all():
             return run_text_mining_and_update_csv()
         return df
@@ -293,5 +293,4 @@ st_folium(mymap, width=850, height=500, key="cafe_map")
 
 if not results.empty:
     st.write("#### 📝 店家詳細資訊清單（自動化特徵工程資料庫）：")
-    # 顯示包含自動計算出的 1/0 標籤
     st.dataframe(results, use_container_width=True)
