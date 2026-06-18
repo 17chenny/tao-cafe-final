@@ -11,23 +11,13 @@ from streamlit_geolocation import streamlit_geolocation
 # 設定網頁標題與圖標
 st.set_page_config(page_title="桃憩時光 - 桃園智慧咖啡廳搜尋", page_icon="☕", layout="wide")
 
-# --- 🌟 核心功能升級：自動化爬蟲文本特徵轉換引擎 (Feature Engineering) 🌟 ---
-def run_text_mining_and_update_csv():
+# --- 🌟 核心功能升級：自動化爬蟲文本特徵轉換引擎 (記憶體高效版) 🌟 ---
+def run_text_mining_and_update_csv(df):
     """
-    這個函式會讀取手打的 cafe.csv，保留原本的店名、地址與經緯度。
-    接著模擬網路爬蟲抓取每家店在 Google Maps/FB/IG 上的評論文本，
-    最後自動做『二值化 (1/0) 轉換』並直接以 utf-8-sig 編碼覆蓋回寫 CSV 檔案！
+    這個函式負責將讀入的 df (從 cafe.csv) 進行動態特徵工程。
+    模擬網路爬蟲抓取每家店在 Google Maps/FB/IG 上的評論文本，
+    自動做『二值化 (1/0) 轉換』，並直接在記憶體中回傳，避免寫入檔案導致雲端報錯。
     """
-    csv_filename = "cafe.csv"
-    if not os.path.exists(csv_filename):
-        st.error(f"❌ 找不到 {csv_filename}，請確保該檔案與程式碼在同一資料夾！")
-        return pd.DataFrame()
-        
-    st.info("🕸️ 正在啟動網路數據採集與特徵工程引擎...")
-    
-    # 讀取 CSV，指定使用 utf-8-sig 完美解決中文字元打架與欄位遺失問題
-    df = pd.read_csv(csv_filename, encoding='utf-8-sig')
-    
     # 為了確保欄位乾淨且對齊側邊欄，動態初始化這些 1/0 欄位
     target_tags = ["midnight", "pudding", "basque", "study", "chat", "photo"]
     for tag in target_tags:
@@ -74,19 +64,17 @@ def run_text_mining_and_update_csv():
     else:
         df["open_hours"] = "13:00 - 21:00"
 
-    # 💾 將自動生成好 1 和 0 的資料重新覆蓋寫入原本的 cafe.csv
-    df.to_csv(csv_filename, index=False, encoding="utf-8-sig")
-    st.success(f"🎉 特徵工程完成！1 和 0 已自動計算並成功覆蓋寫入 {csv_filename}！")
     return df
 
 # --- 效能優化與資料讀取 ---
 def load_data():
     try:
-        # 讀取 CSV 時同樣指定使用 utf-8-sig 編碼，確保欄位名稱 pudding 完美對齊
+        # 讀取 CSV 時同樣指定使用 utf-8-sig 編碼
         df = pd.read_csv("cafe.csv", encoding='utf-8-sig')
-        # 如果發現關鍵欄位不存在或都是空的，自動觸發一次特徵處理
-        if "pudding" not in df.columns or df["pudding"].isnull().all() or (df["pudding"] == 0).all():
-            return run_text_mining_and_update_csv()
+        
+        # 核心修復：不論原本檔案內狀態如何，一律在讀取時於記憶體內補齊 1 與 0 的標籤資料
+        # 這既滿足了爬蟲特徵工程的要求，又避免了 to_csv 的權限報錯
+        df = run_text_mining_and_update_csv(df)
         return df
     except FileNotFoundError:
         st.error("找不到 cafe.csv 檔案！請確認檔案與程式碼在同一個資料夾。")
@@ -165,11 +153,9 @@ def search_cafes(user_lat, user_lng, selected_tags, keyword="", max_distance_km=
 st.title("☕ 桃憩時光 (Tao-Café Finder)")
 st.subheader("桃園專屬智慧標籤與交通圈咖啡廳導航系統")
 
-# 在側邊欄放一個可以向教授展示「數據動態活化」的按鈕
+# 控制台通知
 st.sidebar.header("⚙️ 系統後端控制")
-if st.sidebar.button("🔄 重新執行爬蟲與特徵工程過濾"):
-    run_text_mining_and_update_csv()
-    st.rerun()
+st.sidebar.success("💡 爬蟲文本工程已設定為：【全自動動態活化模式】")
 
 st.write("### 📍 位置權限與起點設定")
 location_consent = st.radio(
