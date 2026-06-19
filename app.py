@@ -77,35 +77,46 @@ tag_map = {
 }
 active_tags = [col for col, label in tag_map.items() if st.sidebar.checkbox(label)]
 
-# --- 定位方式區塊 ---
+# 定位區塊
 st.write("### 📍 位置權限與起點設定")
 loc_type = st.radio("請選擇定位方式：", ("GPS 定位", "手動輸入地址"), horizontal=True)
-
 my_lat, my_lng = 24.9537, 121.2256
 if loc_type == "GPS 定位":
-    st.info("💡 **定位小提醒：** 為了確保定位準確，請點擊下方出現的 **「Get Location」** 按鈕，並在瀏覽器權限視窗選擇 **「允許」**。")
+    st.info("💡 **定位小提醒：** 請點擊下方出現的 **「Get Location」** 按鈕，並選擇 **「允許」**。")
     geo = streamlit_geolocation()
     if geo and geo.get('latitude'):
         my_lat, my_lng = geo['latitude'], geo['longitude']
-        st.success("✅ 定位成功！系統已抓取您的當前位置。")
+        st.success("✅ 定位成功！")
     else:
-        st.warning("⚠️ 尚未定位，請點擊上方按鈕開始定位。")
+        st.warning("⚠️ 尚未定位，請點擊上方按鈕。")
 else:
     addr = st.text_input("🏠 輸入地址：", value="中壢火車站")
     my_lat, my_lng = geocode_address(addr)
 
-# 執行搜尋與顯示
+# 搜尋與結果顯示
 results = search_cafes(my_lat, my_lng, active_tags, user_keyword, minutes * speed)
 
 st.write(f"### 📍 地圖搜尋結果 ({len(results)} 間)")
 mymap = folium.Map(location=[my_lat, my_lng], zoom_start=14)
-
-# 使用 user 圖示標記起點，避免出現數字
-folium.Marker([my_lat, my_lng], popup="您的起點", icon=folium.Icon(color="red", icon="user", prefix="fa")).add_to(mymap)
+folium.Marker([my_lat, my_lng], popup="起點", icon=folium.Icon(color="red", icon="user", prefix="fa")).add_to(mymap)
 
 for _, row in results.iterrows():
-    # 使用 coffee 圖示標記咖啡廳
     folium.Marker([row["lat"], row["lng"]], popup=row["name"], icon=folium.Icon(color="blue", icon="coffee", prefix="fa")).add_to(mymap)
-
 st_folium(mymap, width=850, height=500)
-st.dataframe(results, use_container_width=True)
+
+# 友善資訊顯示
+if not results.empty:
+    display_df = results.copy()
+    label_map = {
+        "limited_time": {1: "⏳ 限時", 0: "不限時"}, "midnight": {1: "🌙 深夜", 0: "無"},
+        "pudding": {1: "🍮 提供布丁", 0: "無提供布丁"}, "basque": {1: "🍰 提供巴斯克", 0: "無巴斯克"},
+        "tiramisu": {1: "🍫 提供提拉米蘇", 0: "無提拉米蘇"}, "dessert": {1: "🧁 提供甜點", 0: "無提供甜點"},
+        "salty_food": {1: "🥪 提供鹹食、正餐", 0: "無鹹食、正餐"}, "café": {1: "☕ 提供咖啡", 0: "無提供咖啡"},
+        "study": {1: "💻 適合讀書", 0: "不適合讀書"}, "chat": {1: "💬 適合聊天", 0: "不適合聊天"},
+        "photo": {1: "📷 適合拍照", 0: "不適合拍照"}, "pet": {1: "🐾 可攜寵物", 0: "禁止寵物入內"},
+        "wifi": {1: "🌐 提供 WiFi", 0: "無提供 WiFi"}
+    }
+    for col, mapping in label_map.items():
+        if col in display_df.columns:
+            display_df[col] = display_df[col].map(mapping)
+    st.dataframe(display_df, use_container_width=True)
