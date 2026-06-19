@@ -15,7 +15,6 @@ st.set_page_config(page_title="桃憩時光 - 桃園智慧咖啡廳搜尋", page
 def load_data():
     try:
         df = pd.read_csv("cafe.csv", encoding='utf-8-sig')
-        # 確保必要的標籤欄位存在，若無則填 0
         tag_cols = ["limited_time", "midnight", "pudding", "basque", "tiramisu", 
                     "dessert", "salty_food", "café", "study", "chat", "photo", "pet", "wifi"]
         for col in tag_cols:
@@ -36,7 +35,7 @@ def haversine(lat1, lon1, lat2, lon2):
     a = (math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2)
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-# 2. 地理編碼功能 (省略部分重複邏輯，功能維持)
+# 2. 地理編碼功能
 @st.cache_data
 def geocode_address(address):
     default_lat, default_lng = 24.9537, 121.2256
@@ -62,14 +61,6 @@ def search_cafes(user_lat, user_lng, selected_tags, keyword="", max_distance_km=
 # ─── 前端介面 ───
 st.title("☕ 桃憩時光 (Tao-Café Finder)")
 
-# 定義標籤 UI 清單
-tag_map = {
-    "limited_time": "⏳ 限時", "midnight": "🌙 深夜", "pudding": "🍮 布丁",
-    "basque": "🍰 巴斯克", "tiramisu": "🍫 提拉米蘇", "dessert": "🧁 甜點",
-    "salty_food": "🥪 鹹食", "café": "☕ 咖啡", "study": "💻 讀書",
-    "chat": "💬 聊天", "photo": "📷 拍照", "pet": "🐾 寵物", "wifi": "🌐 WiFi"
-}
-
 # 側邊欄控制
 st.sidebar.header("🔍 搜尋設定")
 user_keyword = st.sidebar.text_input("店名關鍵字")
@@ -78,15 +69,29 @@ speed = {"🚶 步行": 0.07, "🛵 機車": 0.50, "🚗 汽車": 0.66}[transpor
 minutes = st.sidebar.slider("最大移動時間 (分鐘)", 5, 90, 15, 5)
 
 st.sidebar.write("📌 空間與氛圍標籤：")
+tag_map = {
+    "limited_time": "⏳ 限時", "midnight": "🌙 深夜", "pudding": "🍮 布丁",
+    "basque": "🍰 巴斯克", "tiramisu": "🍫 提拉米蘇", "dessert": "🧁 甜點",
+    "salty_food": "🥪 鹹食", "café": "☕ 咖啡", "study": "💻 讀書",
+    "chat": "💬 聊天", "photo": "📷 拍照", "pet": "🐾 寵物", "wifi": "🌐 WiFi"
+}
 active_tags = [col for col, label in tag_map.items() if st.sidebar.checkbox(label)]
 
-# 位置設定
-loc_type = st.radio("定位方式", ("GPS 定位", "手動輸入地址"))
+# --- 定位方式區塊 ---
+st.write("### 📍 位置權限與起點設定")
+loc_type = st.radio("請選擇定位方式：", ("GPS 定位", "手動輸入地址"), horizontal=True)
+
+my_lat, my_lng = 24.9537, 121.2256
 if loc_type == "GPS 定位":
+    st.info("💡 **定位小提醒：** 為了確保定位準確，請點擊下方出現的 **「Get Location」** 按鈕，並在瀏覽器權限視窗選擇 **「允許」**。")
     geo = streamlit_geolocation()
-    my_lat, my_lng = (geo['latitude'], geo['longitude']) if geo and geo.get('latitude') else (24.9537, 121.2256)
+    if geo and geo.get('latitude'):
+        my_lat, my_lng = geo['latitude'], geo['longitude']
+        st.success("✅ 定位成功！系統已抓取您的當前位置。")
+    else:
+        st.warning("⚠️ 尚未定位，請點擊上方按鈕開始定位。")
 else:
-    addr = st.text_input("輸入起點", "中壢火車站")
+    addr = st.text_input("🏠 輸入地址：", value="中壢火車站")
     my_lat, my_lng = geocode_address(addr)
 
 # 執行搜尋與顯示
@@ -94,9 +99,12 @@ results = search_cafes(my_lat, my_lng, active_tags, user_keyword, minutes * spee
 
 st.write(f"### 📍 地圖搜尋結果 ({len(results)} 間)")
 mymap = folium.Map(location=[my_lat, my_lng], zoom_start=14)
-folium.Marker([my_lat, my_lng], popup="起點", icon=folium.Icon(color="red", icon="user", prefix="fa")).add_to(mymap)
+
+# 使用 user 圖示標記起點，避免出現數字
+folium.Marker([my_lat, my_lng], popup="您的起點", icon=folium.Icon(color="red", icon="user", prefix="fa")).add_to(mymap)
 
 for _, row in results.iterrows():
+    # 使用 coffee 圖示標記咖啡廳
     folium.Marker([row["lat"], row["lng"]], popup=row["name"], icon=folium.Icon(color="blue", icon="coffee", prefix="fa")).add_to(mymap)
 
 st_folium(mymap, width=850, height=500)
