@@ -10,6 +10,10 @@ from streamlit_geolocation import streamlit_geolocation
 # 設定網頁標題與圖標
 st.set_page_config(page_title="桃憩時光 - 桃園智慧咖啡廳搜尋", page_icon="☕", layout="wide")
 
+# 初始化 session_state 用來儲存鎖定的店家
+if 'selected_cafe' not in st.session_state:
+    st.session_state['selected_cafe'] = None
+
 # --- 讀取並處理資料 ---
 @st.cache_data
 def load_data():
@@ -60,14 +64,13 @@ def search_cafes(user_lat, user_lng, selected_tags, keyword="", max_distance_km=
 # ─── 前端介面 ───
 st.title("☕ 桃憩時光 (Tao-Café Finder)")
 
-# 側邊欄控制
+# 側邊欄
 st.sidebar.header("🔍 搜尋設定")
 user_keyword = st.sidebar.text_input("店名關鍵字")
 transport_mode = st.sidebar.selectbox("代步工具", ("🚶 步行", "🛵 機車", "🚗 汽車"))
 speed = {"🚶 步行": 0.07, "🛵 機車": 0.50, "🚗 汽車": 0.66}[transport_mode]
 minutes = st.sidebar.slider("最大移動時間 (分鐘)", 5, 90, 15, 5)
 
-st.sidebar.write("📌 空間與氛圍標籤：")
 tag_map = {
     "limited_time": "⏳ 限時", "midnight": "🌙 深夜", "pudding": "🍮 布丁",
     "basque": "🍰 巴斯克", "tiramisu": "🍫 提拉米蘇", "dessert": "🧁 甜點",
@@ -76,7 +79,7 @@ tag_map = {
 }
 active_tags = [col for col, label in tag_map.items() if st.sidebar.checkbox(label)]
 
-# 定位區塊
+# 定位
 st.write("### 📍 位置權限與起點設定")
 loc_type = st.radio("請選擇定位方式：", ("GPS 定位", "手動輸入地址"), horizontal=True)
 my_lat, my_lng = 24.9537, 121.2256
@@ -86,42 +89,44 @@ if loc_type == "GPS 定位":
     if geo and geo.get('latitude'):
         my_lat, my_lng = geo['latitude'], geo['longitude']
         st.success("✅ 定位成功！")
-    else:
-        st.warning("⚠️ 尚未定位，請點擊上方按鈕。")
 else:
     addr = st.text_input("🏠 輸入地址：", value="中壢火車站")
     my_lat, my_lng = geocode_address(addr)
 
-# 搜尋結果
+# 搜尋
 results = search_cafes(my_lat, my_lng, active_tags, user_keyword, minutes * speed)
 
-# 地圖顯示
+# 地圖
 st.write(f"### 📍 地圖搜尋結果 ({len(results)} 間)")
 mymap = folium.Map(location=[my_lat, my_lng], zoom_start=14)
 folium.Marker([my_lat, my_lng], popup="起點", icon=folium.Icon(color="red", icon="user", prefix="fa")).add_to(mymap)
 
 for _, row in results.iterrows():
-    # 這裡加入 tooltip，讓地圖能偵測到點擊的店名
     folium.Marker([row["lat"], row["lng"]], popup=row["name"], tooltip=row["name"], icon=folium.Icon(color="blue", icon="coffee", prefix="fa")).add_to(mymap)
 
 map_data = st_folium(mymap, width=850, height=500)
 
-# 焦點與互動邏輯
-selected_name = map_data['last_object_clicked_tooltip']
+# 更新鎖定狀態
+if map_data['last_object_clicked_tooltip']:
+    st.session_state['selected_cafe'] = map_data['last_object_clicked_tooltip']
 
-# 顯示資訊區塊
+# 顯示結果與重置邏輯
 if not results.empty:
-    # 決定要顯示的資料範圍
-    if selected_name:
-        display_results = results[results["name"] == selected_name]
-        st.success(f"🎯 已鎖定店家：{selected_name}。")
-        if st.button("❌ 取消鎖定，查看全部"):
-            st.rerun()
+    if st.session_state['selected_cafe']:
+        # 檢查該店家是否還在目前的搜尋結果中
+        if st.session_state['selected_cafe'] in results["name"].values:
+            st.success(f"🎯 已鎖定店家：{st.session_state['selected_cafe']}")
+            if st.button("❌ 取消鎖定，查看全部"):
+                st.session_state['selected_cafe'] = None
+                st.rerun()
+            display_df = results[results["name"] == st.session_state['selected_cafe']]
+        else:
+            st.session_state['selected_cafe'] = None # 店家已消失，自動解鎖
+            display_df = results
     else:
-        display_results = results
+        display_df = results
 
-    # 資料轉換 (友善顯示)
-    display_df = display_results.copy()
+    # 顯示 dataframe
     label_map = {
         "limited_time": {1: "⏳ 限時", 0: "不限時"}, "midnight": {1: "🌙 深夜", 0: "無"},
         "pudding": {1: "🍮 提供布丁", 0: "無提供布丁"}, "basque": {1: "🍰 提供巴斯克", 0: "無巴斯克"},
@@ -131,6 +136,8 @@ if not results.empty:
         "photo": {1: "📷 適合拍照", 0: "不適合拍照"}, "pet": {1: "🐾 可攜寵物", 0: "禁止寵物入內"},
         "wifi": {1: "🌐 提供 WiFi", 0: "無提供 WiFi"}
     }
+    
+    display_df = display_df.copy()
     for col, mapping in label_map.items():
         if col in display_df.columns: display_df[col] = display_df[col].map(mapping)
     
