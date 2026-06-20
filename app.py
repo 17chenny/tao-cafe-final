@@ -18,15 +18,14 @@ def load_data():
         tag_cols = ["limited_time", "midnight", "pudding", "basque", "tiramisu", 
                     "dessert", "salty_food", "café", "study", "chat", "photo", "pet", "wifi"]
         for col in tag_cols:
-            if col not in df.columns:
-                df[col] = 0
+            if col not in df.columns: df[col] = 0
         df = df.fillna({"open_hours": "詳見官方粉絲專頁"})
         return df
     except Exception as e:
         st.error(f"讀取 cafe.csv 失敗: {e}")
         return pd.DataFrame()
 
-# 1. 哈維辛公式
+# 哈維辛公式
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -35,7 +34,7 @@ def haversine(lat1, lon1, lat2, lon2):
     a = (math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2)
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-# 2. 地理編碼功能
+# 地理編碼功能
 @st.cache_data
 def geocode_address(address):
     default_lat, default_lng = 24.9537, 121.2256
@@ -93,20 +92,36 @@ else:
     addr = st.text_input("🏠 輸入地址：", value="中壢火車站")
     my_lat, my_lng = geocode_address(addr)
 
-# 搜尋與結果顯示
+# 搜尋結果
 results = search_cafes(my_lat, my_lng, active_tags, user_keyword, minutes * speed)
 
+# 地圖顯示
 st.write(f"### 📍 地圖搜尋結果 ({len(results)} 間)")
 mymap = folium.Map(location=[my_lat, my_lng], zoom_start=14)
 folium.Marker([my_lat, my_lng], popup="起點", icon=folium.Icon(color="red", icon="user", prefix="fa")).add_to(mymap)
 
 for _, row in results.iterrows():
-    folium.Marker([row["lat"], row["lng"]], popup=row["name"], icon=folium.Icon(color="blue", icon="coffee", prefix="fa")).add_to(mymap)
-st_folium(mymap, width=850, height=500)
+    # 這裡加入 tooltip，讓地圖能偵測到點擊的店名
+    folium.Marker([row["lat"], row["lng"]], popup=row["name"], tooltip=row["name"], icon=folium.Icon(color="blue", icon="coffee", prefix="fa")).add_to(mymap)
 
-# 友善資訊顯示
+map_data = st_folium(mymap, width=850, height=500)
+
+# 焦點與互動邏輯
+selected_name = map_data['last_object_clicked_tooltip']
+
+# 顯示資訊區塊
 if not results.empty:
-    display_df = results.copy()
+    # 決定要顯示的資料範圍
+    if selected_name:
+        display_results = results[results["name"] == selected_name]
+        st.success(f"🎯 已鎖定店家：{selected_name}。")
+        if st.button("❌ 取消鎖定，查看全部"):
+            st.rerun()
+    else:
+        display_results = results
+
+    # 資料轉換 (友善顯示)
+    display_df = display_results.copy()
     label_map = {
         "limited_time": {1: "⏳ 限時", 0: "不限時"}, "midnight": {1: "🌙 深夜", 0: "無"},
         "pudding": {1: "🍮 提供布丁", 0: "無提供布丁"}, "basque": {1: "🍰 提供巴斯克", 0: "無巴斯克"},
@@ -117,6 +132,6 @@ if not results.empty:
         "wifi": {1: "🌐 提供 WiFi", 0: "無提供 WiFi"}
     }
     for col, mapping in label_map.items():
-        if col in display_df.columns:
-            display_df[col] = display_df[col].map(mapping)
+        if col in display_df.columns: display_df[col] = display_df[col].map(mapping)
+    
     st.dataframe(display_df, use_container_width=True)
